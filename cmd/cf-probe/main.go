@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/huilang-me/cfsm-agent/internal/cfprobe"
+	"github.com/chrimast/cfm-agent/internal/cfprobe"
 )
 
 var version = "dev"

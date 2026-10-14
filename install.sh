@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="huilang-me/cfsm-agent"
+REPO="chrimast/cfm-agent"
 GITHUB_PROXY=""
 INSTALL_VERSION="latest"
 
@@ -198,7 +198,7 @@ tmp="${tmp_dir%/}/cf-probe-bootstrap.$$"
 tmp_err="$tmp.err"
 trap 'rm -f "$tmp" "$tmp_err"' EXIT INT TERM
 
-log "CF-Server-Monitor Go Probe bootstrap"
+log "CF-Monitor Go Probe bootstrap"
 log "  repo    : $REPO"
 log "  version : $INSTALL_VERSION"
 log "  target  : $os_name/$arch_name"

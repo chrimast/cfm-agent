@@ -1,6 +1,6 @@
 # cfsm-agent
 
-`cfsm-agent` 是 CF-Server-Monitor 的 Go Probe Agent，安装后会以 `cf-probe` 服务运行，定时采集服务器资源、网络流量和探测数据，并上报到指定的 Worker 地址。
+`cfsm-agent` 是 CF-Monitor 的 Go Probe Agent，安装后会以 `cf-probe` 服务运行，定时采集服务器资源、网络流量和探测数据，并上报到指定的 Worker 地址。
 
 ## 快速安装
 
@@ -13,13 +13,13 @@
 Linux、OpenWrt、Synology DSM、FreeBSD、macOS 可使用安装脚本自动下载当前系统对应的最新 release：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.sh | sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
+curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
 如果系统没有 `curl`，可使用 `wget`：
 
 ```bash
-wget -O- https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.sh | sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
+wget -O- https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
 ### 普通用户安装（非 root）
@@ -32,7 +32,7 @@ wget -O- https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.sh
 
 ```powershell
 $script = "$env:TEMP\install-cf-probe.ps1"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.ps1" -OutFile $script -UseBasicParsing
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.ps1" -OutFile $script -UseBasicParsing
 PowerShell -ExecutionPolicy Bypass -File $script install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
@@ -43,13 +43,13 @@ Windows 上如果安装时开启 `-auto_update=1`，自动更新会下载并执�
 默认安装最新 release。需要指定版本时：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.sh | sh -s -- install --install-version=v1.0.10 -id=SERVER_ID -secret=SECRET -url=WORKER_URL
+curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install --install-version=v1.0.10 -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
 GitHub 下载较慢时，可以配置代理前缀：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.sh | sh -s -- install --install-ghproxy=https://gh-proxy.example.com -id=SERVER_ID -secret=SECRET -url=WORKER_URL
+curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install --install-ghproxy=https://gh-proxy.example.com -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
 ## 常用安装参数
@@ -176,7 +176,7 @@ Get-Content "C:\ProgramData\cf-probe\cf-probe.log" -Wait
 Linux、OpenWrt、Synology DSM、FreeBSD、macOS：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.sh | sh -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- uninstall
 ```
 
 普通用户执行卸载只清理当前用户的 `~/.cf-probe/`、支持 `systemd --user` 的 Linux 用户服务或 macOS LaunchAgent 自启动项；Synology DSM、OpenWrt、Alpine/OpenRC 以及其他系统级安装请使用 root 权限卸载。root 执行卸载清理系统级安装。macOS root 卸载会同时清理 sudo 调用者对应的用户版安装；旧 root/system 版请先执行 `sudo /usr/local/bin/cf-probe uninstall` 清理，再以普通用户安装。
@@ -185,7 +185,7 @@ Windows 请使用管理员权限打开 PowerShell：
 
 ```powershell
 $script = "$env:TEMP\install-cf-probe.ps1"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/huilang-me/cfsm-agent/main/install.ps1" -OutFile $script -UseBasicParsing
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.ps1" -OutFile $script -UseBasicParsing
 PowerShell -ExecutionPolicy Bypass -File $script uninstall
 ```
 
@@ -520,7 +520,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t cfsm-agent:local --loa
 需要 Go `1.24` 或更新版本。
 
 ```bash
-git clone https://github.com/huilang-me/cfsm-agent.git
+git clone https://github.com/chrimast/cfm-agent.git
 cd cfsm-agent
 go build -trimpath -ldflags "-s -w -X main.version=$(git describe --tags --always --dirty)" -o cf-probe ./cmd/cf-probe
 ```

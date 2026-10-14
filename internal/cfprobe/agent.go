@@ -195,6 +195,7 @@ func Run(configFile string, debug bool, version string) error {
 		cfg.ServerID, cfg.WorkerURL, cfg.ReportInterval, cfg.CollectInterval, cfg.ResetDay, cfg.ConnectionMode, cfg.PingMode, firstNonEmpty(cfg.Interface, "auto"), cfg.AutoUpdate)
 
 	go a.networkWorker(ctx)
+	a.startTerminalWorker(ctx.Done())
 	if a.usesWSS() {
 		a.reporter.start(ctx)
 	} else {
