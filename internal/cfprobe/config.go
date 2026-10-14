@@ -141,6 +141,7 @@ func readConfig(path string) (Config, error) {
 	cfg.PingMode, _ = normalizePingMode(values["PING_MODE"])
 	cfg.AutoUpdate = values["AUTO_UPDATE"] == "1"
 	cfg.UpdateProxy = strings.TrimSpace(values["UPDATE_PROXY"])
+	cfg.TerminalEnabled = values["TERMINAL_ENABLED"] == "1"
 	cfg.ConfigMD5 = values["CONFIG_MD5"]
 	if cfg.ConfigMD5 == "" {
 		cfg.ConfigMD5 = "none"
@@ -181,6 +182,11 @@ func writeConfig(path string, cfg Config) error {
 		writeKV("AUTO_UPDATE", "0")
 	}
 	writeKV("UPDATE_PROXY", cfg.UpdateProxy)
+	if cfg.TerminalEnabled {
+		writeKV("TERMINAL_ENABLED", "1")
+	} else {
+		writeKV("TERMINAL_ENABLED", "0")
+	}
 	if cfg.ConfigMD5 == "" {
 		cfg.ConfigMD5 = "none"
 	}

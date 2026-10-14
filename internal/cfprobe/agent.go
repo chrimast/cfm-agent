@@ -190,7 +190,7 @@ func Run(configFile string, debug bool, version string) error {
 	a.basic = collectBasicStats()
 	a.basicAt = time.Now()
 
-	a.log.info("CF-Server-Monitor Go Probe started version=%s platform=%s config=%s", version, platformName(), paths.ConfigFile)
+	a.log.info("CF-Monitor Go Probe started version=%s platform=%s config=%s", version, platformName(), paths.ConfigFile)
 	a.log.debugf("config id=%s url=%s report_interval=%ds collect_interval=%ds reset_day=%d connection_mode=%s ping_mode=%s interface=%s auto_update=%v",
 		cfg.ServerID, cfg.WorkerURL, cfg.ReportInterval, cfg.CollectInterval, cfg.ResetDay, cfg.ConnectionMode, cfg.PingMode, firstNonEmpty(cfg.Interface, "auto"), cfg.AutoUpdate)
 
@@ -921,6 +921,7 @@ func (a *Agent) applyRemoteConfigWithOptions(body []byte, headers http.Header, a
 		"interface":           true,
 		"connection_mode":     true,
 		"ping_mode":           true,
+		"terminal_enabled":    true,
 		"rx_correction":       true,
 		"tx_correction":       true,
 		"update":              true,
@@ -934,7 +935,7 @@ func (a *Agent) applyRemoteConfigWithOptions(body []byte, headers http.Header, a
 	if update != "" && update != "0" && update != "1" {
 		return fmt.Errorf("invalid update %s", update)
 	}
-	hasConfig := values.Has("collect_interval") || values.Has("report_interval") || values.Has("wss_report_interval") || values.Has("reset_day") || values.Has("schema_version") || values.Has("interface") || values.Has("connection_mode") || values.Has("ping_mode") || values.Has("node_1") || values.Has("node_2") || values.Has("node_3") || values.Has("node_4")
+	hasConfig := values.Has("collect_interval") || values.Has("report_interval") || values.Has("wss_report_interval") || values.Has("reset_day") || values.Has("schema_version") || values.Has("interface") || values.Has("connection_mode") || values.Has("ping_mode") || values.Has("node_1") || values.Has("node_2") || values.Has("node_3") || values.Has("node_4") || values.Has("terminal_enabled")
 	hasCorrection := values.Has("rx_correction") || values.Has("tx_correction")
 	cfg := a.configSnapshot()
 	if !hasConfig {
@@ -1002,7 +1003,7 @@ func (a *Agent) applyRemoteConfigWithOptions(body []byte, headers http.Header, a
 	if hasRemoteMD5 {
 		shouldApply = newMD5 != cfg.ConfigMD5
 	} else {
-		shouldApply = remoteConfigDiffers(cfg, values, effectiveCollect, report, reset, iface, connectionMode, pingMode)
+		shouldApply = remoteConfigDiffers(cfg, values, effectiveCollect, report, reset, iface, connectionMode, pingMode, values.Get("terminal_enabled") == "1")
 	}
 	if shouldApply {
 		nextCfg := cfg
@@ -1020,6 +1021,7 @@ func (a *Agent) applyRemoteConfigWithOptions(body []byte, headers http.Header, a
 		nextCfg.Interface = iface
 		nextCfg.ConnectionMode = connectionMode
 		nextCfg.PingMode = pingMode
+		nextCfg.TerminalEnabled = values.Get("terminal_enabled") == "1"
 		if hasRemoteMD5 {
 			nextCfg.ConfigMD5 = newMD5
 		}
@@ -1048,7 +1050,7 @@ func (a *Agent) applyRemoteConfigWithOptions(body []byte, headers http.Header, a
 		}
 		a.syncReportTransport()
 		a.wakeTick()
-		a.log.info("dynamic configuration applied md5=%s connection_mode=%s ping_mode=%s interface=%s", firstNonEmpty(nextCfg.ConfigMD5, "none"), nextCfg.ConnectionMode, nextCfg.PingMode, firstNonEmpty(iface, "auto"))
+		a.log.info("dynamic configuration applied md5=%s connection_mode=%s ping_mode=%s terminal=%v interface=%s", firstNonEmpty(nextCfg.ConfigMD5, "none"), nextCfg.ConnectionMode, nextCfg.PingMode, nextCfg.TerminalEnabled, firstNonEmpty(iface, "auto"))
 		cfg = nextCfg
 	}
 	if hasCorrection {
@@ -1083,7 +1085,7 @@ func (a *Agent) syncReportTransport() {
 	}
 }
 
-func remoteConfigDiffers(cfg Config, values url.Values, collect, report, reset int, iface, connectionMode, pingMode string) bool {
+func remoteConfigDiffers(cfg Config, values url.Values, collect, report, reset int, iface, connectionMode, pingMode string, terminalEnabled bool) bool {
 	return cfg.CollectInterval != collect ||
 		cfg.ReportInterval != report ||
 		cfg.ResetDay != reset ||
@@ -1097,7 +1099,8 @@ func remoteConfigDiffers(cfg Config, values url.Values, collect, report, reset i
 		cfg.Node4 != values.Get("node_4") ||
 		cfg.Interface != iface ||
 		cfg.ConnectionMode != connectionMode ||
-		cfg.PingMode != pingMode
+		cfg.PingMode != pingMode ||
+		cfg.TerminalEnabled != terminalEnabled
 }
 func inIntSet(v int, allowed ...int) bool {
 	for _, item := range allowed {

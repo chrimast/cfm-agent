@@ -1,6 +1,6 @@
-# cfsm-agent
+# cfm-agent
 
-`cfsm-agent` 是 CF-Monitor 的 Go Probe Agent，安装后会以 `cf-probe` 服务运行，定时采集服务器资源、网络流量和探测数据，并上报到指定的 Worker 地址。
+`cfm-agent` 是 CF-Monitor 的 Go Probe Agent，安装后会以 `cf-probe` 服务运行，定时采集服务器资源、网络流量和探测数据，并上报到指定的 Worker 地址。
 
 ## 快速安装
 

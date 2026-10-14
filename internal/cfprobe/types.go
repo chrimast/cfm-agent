@@ -7,7 +7,7 @@ const (
 	legacyAgentVersion          = "1.0.0"
 	maxTrafficCorrectionGB      = 1000000
 	autoUpdateDelay             = 60 * time.Second
-	configSchemaVersion         = "7"
+	configSchemaVersion         = "8"
 	defaultReportIntervalSec    = 60
 	defaultWSSReportIntervalSec = 2
 	minWSSReportIntervalSec     = 1
@@ -36,8 +36,9 @@ type Config struct {
 	ResetDay        int
 	ConnectionMode  string
 	PingMode        string
-	AutoUpdate      bool
-	UpdateProxy     string
+	AutoUpdate       bool
+	UpdateProxy      string
+	TerminalEnabled  bool
 	// ConfigMD5 mirrors the worker dynamic config version; local fields like
 	// AutoUpdate and UpdateProxy are intentionally outside that comparison.
 	ConfigMD5 string

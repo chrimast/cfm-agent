@@ -234,7 +234,7 @@ func printBanner(version string) {
 		version = legacyAgentVersion
 	}
 	fmt.Println("===========================================")
-	fmt.Println("    CF-Server-Monitor Go Probe")
+	fmt.Println("    CF-Monitor Go Probe")
 	fmt.Printf("    Version: %s\n", version)
 	fmt.Println("===========================================")
 }
@@ -275,7 +275,7 @@ func ensureLogFile(path string) error {
 func printInstallSummary(paths Paths, opts InstallOptions) {
 	fmt.Println("")
 	fmt.Println("===========================================")
-	fmt.Println("    CF-Server-Monitor Go Probe 安装成功")
+	fmt.Println("    CF-Monitor Go Probe 安装成功")
 	fmt.Println("===========================================")
 	fmt.Printf("  Service     : %s\n", paths.ServiceName)
 	fmt.Printf("  Binary      : %s\n", paths.BinaryFile)

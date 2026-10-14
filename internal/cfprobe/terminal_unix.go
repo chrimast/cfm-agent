@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,6 +32,14 @@ func (a *Agent) startTerminalWorker(ctxDone <-chan struct{}) {
 				return
 			default:
 			}
+			if !a.configSnapshot().TerminalEnabled {
+				select {
+				case <-ctxDone:
+					return
+				case <-time.After(3 * time.Second):
+				}
+				continue
+			}
 			if err := a.runTerminalSession(); err != nil {
 				a.log.debugf("terminal session: %v", err)
 			}
@@ -43,12 +51,18 @@ func (a *Agent) startTerminalWorker(ctxDone <-chan struct{}) {
 			if backoff < 30*time.Second {
 				backoff *= 2
 			}
+			if a.configSnapshot().TerminalEnabled {
+				backoff = time.Second
+			}
 		}
 	}()
 }
 
 func (a *Agent) runTerminalSession() error {
 	cfg := a.configSnapshot()
+	if !cfg.TerminalEnabled {
+		return nil
+	}
 	wsURL, err := terminalWebSocketURL(cfg.WorkerURL, cfg.ServerID, cfg.Secret)
 	if err != nil {
 		return err
@@ -66,93 +80,148 @@ func (a *Agent) runTerminalSession() error {
 	return servePTY(conn)
 }
 
-func terminalWebSocketURL(workerURL, id, secret string) (string, error) {
-	u, err := url.Parse(workerURL)
-	if err != nil {
-		return "", err
-	}
-	switch u.Scheme {
-	case "https":
-		u.Scheme = "wss"
-	case "http":
-		u.Scheme = "ws"
-	}
-	u.Path = "/agent/term"
-	q := u.Query()
-	q.Set("id", id)
-	q.Set("secret", secret)
-	u.RawQuery = q.Encode()
-	return u.String(), nil
-}
-
 func servePTY(conn *webSocketConn) error {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	ptmx, tty, err := openPTY()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(shell)
-	cmd.Stdin = tty
-	cmd.Stdout = tty
-	cmd.Stderr = tty
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
-	if err := cmd.Start(); err != nil {
-		_ = ptmx.Close()
-		_ = tty.Close()
-		return err
-	}
-	_ = tty.Close()
-	done := make(chan struct{})
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := ptmx.Read(buf)
-			if n > 0 {
-				payload, _ := json.Marshal(termMessage{Type: "data", Data: string(buf[:n])})
-				_ = conn.WriteText(payload, 5*time.Second)
-			}
-			if err != nil {
-				close(done)
-				return
-			}
+	var mu sync.Mutex
+	var ptmx *os.File
+	var cmd *exec.Cmd
+	var readerDone chan struct{}
+
+	waitReader := func() {
+		if readerDone != nil {
+			<-readerDone
+			readerDone = nil
 		}
-	}()
-	go func() {
-		for {
-			raw, _, err := conn.ReadDataMessage()
-			if err != nil {
-				_ = cmd.Process.Kill()
-				return
+	}
+
+	stopShell := func() {
+		mu.Lock()
+		current := cmd
+		master := ptmx
+		cmd = nil
+		ptmx = nil
+		mu.Unlock()
+		if current != nil && current.Process != nil {
+			_ = current.Process.Kill()
+			_ = current.Wait()
+		}
+		if master != nil {
+			_ = master.Close()
+		}
+		waitReader()
+	}
+	defer stopShell()
+
+	startShell := func(cols, rows int) error {
+		mu.Lock()
+		alive := cmd != nil && cmd.Process != nil && cmd.ProcessState == nil
+		master := ptmx
+		mu.Unlock()
+		if alive && master != nil {
+			_ = unix.IoctlSetWinsize(int(master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
+				Row: uint16(max(rows, 1)),
+				Col: uint16(max(cols, 1)),
+			})
+			return nil
+		}
+		stopShell()
+
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		master, tty, err := openPTY()
+		if err != nil {
+			return err
+		}
+		command := exec.Command(shell)
+		command.Stdin = tty
+		command.Stdout = tty
+		command.Stderr = tty
+		command.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
+		if err := command.Start(); err != nil {
+			_ = master.Close()
+			_ = tty.Close()
+			return err
+		}
+		_ = tty.Close()
+		_ = unix.IoctlSetWinsize(int(master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
+			Row: uint16(max(rows, 24)),
+			Col: uint16(max(cols, 80)),
+		})
+		done := make(chan struct{})
+		mu.Lock()
+		ptmx = master
+		cmd = command
+		readerDone = done
+		mu.Unlock()
+		go func() {
+			defer close(done)
+			buf := make([]byte, 4096)
+			for {
+				n, err := master.Read(buf)
+				if n > 0 {
+					payload, _ := json.Marshal(termMessage{Type: "data", Data: string(buf[:n])})
+					_ = conn.WriteText(payload, 5*time.Second)
+				}
+				if err != nil {
+					payload, _ := json.Marshal(termMessage{Type: "exit", Data: "shell exit"})
+					_ = conn.WriteText(payload, 2*time.Second)
+					mu.Lock()
+					if ptmx == master {
+						ptmx = nil
+					}
+					if cmd == command {
+						cmd = nil
+					}
+					mu.Unlock()
+					_ = command.Wait()
+					_ = master.Close()
+					return
+				}
 			}
-			var msg termMessage
-			if json.Unmarshal(raw, &msg) != nil {
-				continue
+		}()
+		ready, _ := json.Marshal(termMessage{Type: "ready"})
+		_ = conn.WriteText(ready, 2*time.Second)
+		return nil
+	}
+
+	for {
+		raw, _, err := conn.ReadDataMessage()
+		if err != nil {
+			stopShell()
+			return err
+		}
+		var msg termMessage
+		if json.Unmarshal(raw, &msg) != nil {
+			continue
+		}
+		switch msg.Type {
+		case "open":
+			if err := startShell(msg.Cols, msg.Rows); err != nil {
+				payload, _ := json.Marshal(termMessage{Type: "error", Data: err.Error()})
+				_ = conn.WriteText(payload, 2*time.Second)
+				return err
 			}
-			switch msg.Type {
-			case "input":
-				_, _ = io.WriteString(ptmx, msg.Data)
-			case "resize":
-				_ = unix.IoctlSetWinsize(int(ptmx.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
+		case "input":
+			mu.Lock()
+			master := ptmx
+			mu.Unlock()
+			if master != nil {
+				_, _ = io.WriteString(master, msg.Data)
+			}
+		case "resize":
+			mu.Lock()
+			master := ptmx
+			mu.Unlock()
+			if master != nil {
+				_ = unix.IoctlSetWinsize(int(master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
 					Row: uint16(max(msg.Rows, 1)),
 					Col: uint16(max(msg.Cols, 1)),
 				})
-			case "open":
-				_ = unix.IoctlSetWinsize(int(ptmx.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
-					Row: uint16(max(msg.Rows, 24)),
-					Col: uint16(max(msg.Cols, 80)),
-				})
 			}
+		case "hello", "ping":
 		}
-	}()
-	err = cmd.Wait()
-	_ = ptmx.Close()
-	<-done
-	exitPayload, _ := json.Marshal(termMessage{Type: "exit", Data: fmt.Sprintf("shell exit")})
-	_ = conn.WriteText(exitPayload, 2*time.Second)
-	return err
+	}
 }
 
 func openPTY() (*os.File, *os.File, error) {
