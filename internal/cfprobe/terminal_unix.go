@@ -4,7 +4,6 @@ package cfprobe
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -200,7 +199,6 @@ func servePTY(conn *webSocketConn) error {
 			if err := startShell(msg.Cols, msg.Rows); err != nil {
 				payload, _ := json.Marshal(termMessage{Type: "error", Data: err.Error()})
 				_ = conn.WriteText(payload, 2*time.Second)
-				return err
 			}
 		case "input":
 			mu.Lock()
@@ -225,20 +223,20 @@ func servePTY(conn *webSocketConn) error {
 }
 
 func openPTY() (*os.File, *os.File, error) {
-	ptmx, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	ptmx, err := os.OpenFile("/dev/ptmx", os.O_RDWR|syscall.O_NOCTTY, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := unix.IoctlSetInt(int(ptmx.Fd()), unix.TIOCSPTLCK, 0); err != nil {
+	if err := unix.Unlockpt(int(ptmx.Fd())); err != nil {
 		_ = ptmx.Close()
 		return nil, nil, err
 	}
-	n, err := unix.IoctlGetInt(int(ptmx.Fd()), unix.TIOCGPTN)
+	name, err := unix.Ptsname(int(ptmx.Fd()))
 	if err != nil {
 		_ = ptmx.Close()
 		return nil, nil, err
 	}
-	tty, err := os.OpenFile(fmt.Sprintf("/dev/pts/%d", n), os.O_RDWR|syscall.O_NOCTTY, 0)
+	tty, err := os.OpenFile(name, os.O_RDWR|syscall.O_NOCTTY, 0)
 	if err != nil {
 		_ = ptmx.Close()
 		return nil, nil, err
