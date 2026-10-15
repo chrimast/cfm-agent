@@ -56,6 +56,7 @@ func parseInstallOptions(args []string) (InstallOptions, error) {
 
 	var autoUpdate, debug string
 	var ignoredInstallVersion string
+	var ignoredInstallUser string
 	fs.StringVar(&opts.ServerID, "id", "", "")
 	fs.StringVar(&opts.Secret, "secret", "", "")
 	fs.StringVar(&opts.WorkerURL, "url", "", "")
@@ -85,6 +86,7 @@ func parseInstallOptions(args []string) (InstallOptions, error) {
 	fs.StringVar(&debug, "debug", "", "")
 	fs.StringVar(&opts.UpdateProxy, "install-ghproxy", "", "")
 	fs.StringVar(&ignoredInstallVersion, "install-version", "", "")
+	fs.StringVar(&ignoredInstallUser, "install-user", "", "")
 	fs.BoolVar(&opts.NoStart, "no_start", false, "")
 	fs.BoolVar(&opts.NoStart, "no-start", false, "")
 
@@ -154,6 +156,12 @@ func parseRunOptions(args []string) (bool, string, error) {
 func parseUninstallArgs(args []string) error {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	var ignoredInstallUser string
+	var ignoredInstallVersion string
+	var ignoredInstallProxy string
+	fs.StringVar(&ignoredInstallUser, "install-user", "", "")
+	fs.StringVar(&ignoredInstallVersion, "install-version", "", "")
+	fs.StringVar(&ignoredInstallProxy, "install-ghproxy", "", "")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

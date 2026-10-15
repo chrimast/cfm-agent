@@ -22,9 +22,13 @@ curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh 
 wget -O- https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
-### 普通用户安装（非 root）
+### 专用 cfm 用户（Linux systemd）
 
-支持 `systemd --user` 的 Linux 可使用非 root 安装；执行安装时会使用当前用户，不会新建用户；二进制、配置和流量文件会写入 `~/.cf-probe/`，自启动使用 `systemd --user`。Synology DSM、OpenWrt、Alpine/OpenRC 以及其他不支持 `systemd --user` 的系统请使用 root 权限安装。部分 Linux 系统从旧的 root Go 版切换到非 root 安装时，需要先在 root 下卸载旧版 agent.
+后台复制的 Linux 安装命令是一行 `curl | sh`，脚本会创建 `cfm` 用户、家目录 `/opt/cfm`，并以该用户执行探针安装（`/opt/cfm/.cf-probe/`）。需要 root 或 sudo。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install --install-user=cfm -id=SERVER_ID -secret=SECRET -url=WORKER_URL
+```
 
 ## Windows 安装
 

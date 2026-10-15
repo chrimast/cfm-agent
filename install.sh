@@ -4,6 +4,8 @@ set -eu
 REPO="chrimast/cfm-agent"
 GITHUB_PROXY=""
 INSTALL_VERSION="latest"
+INSTALL_USER=""
+CFM_HOME="/opt/cfm"
 
 log() {
     printf '%s\n' "$*"
@@ -20,6 +22,7 @@ for arg in "$@"; do
         case "$need_value_for" in
             proxy) GITHUB_PROXY="$arg" ;;
             version) INSTALL_VERSION="$arg" ;;
+            user) INSTALL_USER="$arg" ;;
         esac
         need_value_for=""
         continue
@@ -29,6 +32,8 @@ for arg in "$@"; do
         --install-ghproxy) need_value_for="proxy" ;;
         --install-version=*) INSTALL_VERSION="${arg#*=}" ;;
         --install-version) need_value_for="version" ;;
+        --install-user=*) INSTALL_USER="${arg#*=}" ;;
+        --install-user) need_value_for="user" ;;
     esac
 done
 
@@ -92,6 +97,47 @@ detect_arch() {
     esac
 }
 
+as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        die "need root or sudo for dedicated $INSTALL_USER user"
+    fi
+}
+
+prepare_install_user() {
+    [ -n "$INSTALL_USER" ] || return 0
+    [ "$(uname -s 2>/dev/null || printf unknown)" = Linux ] || die "dedicated $INSTALL_USER user requires systemd Linux"
+    if [ ! -d /run/systemd/system ] || ! command -v systemctl >/dev/null 2>&1 || ! command -v loginctl >/dev/null 2>&1 || ! command -v useradd >/dev/null 2>&1 || ! command -v runuser >/dev/null 2>&1; then
+        die "dedicated $INSTALL_USER user requires systemd Linux. Use OpenWrt/Alpine/Synology/FreeBSD for those systems."
+    fi
+    as_root mkdir -p "$CFM_HOME"
+    id "$INSTALL_USER" >/dev/null 2>&1 || as_root useradd -m -d "$CFM_HOME" -s /bin/sh "$INSTALL_USER"
+    as_root usermod -d "$CFM_HOME" "$INSTALL_USER" >/dev/null 2>&1 || true
+    as_root chown "$INSTALL_USER:$INSTALL_USER" "$CFM_HOME"
+    as_root loginctl enable-linger "$INSTALL_USER"
+    CFM_UID="$(id -u "$INSTALL_USER")"
+    as_root systemctl start "user@${CFM_UID}.service" >/dev/null 2>&1 || true
+    log "  user    : $INSTALL_USER ($CFM_HOME)"
+}
+
+prepare_uninstall_user() {
+    [ -n "$INSTALL_USER" ] || return 0
+    command -v runuser >/dev/null 2>&1 || die "dedicated $INSTALL_USER uninstall requires runuser"
+    id "$INSTALL_USER" >/dev/null 2>&1 || die "user $INSTALL_USER does not exist; this host was not installed as the dedicated user"
+    CFM_UID="$(id -u "$INSTALL_USER")"
+}
+
+run_as_install_user() {
+    if [ -z "$INSTALL_USER" ] || [ "$(id -un 2>/dev/null || true)" = "$INSTALL_USER" ]; then
+        "$@"
+        return
+    fi
+    as_root runuser -u "$INSTALL_USER" -- env HOME="$CFM_HOME" XDG_RUNTIME_DIR="/run/user/${CFM_UID}" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${CFM_UID}/bus" "$@"
+}
+
 download() {
     url="$1"
     out="$2"
@@ -107,17 +153,38 @@ download() {
 run_payload() {
     bin="$1"
     shift
+    skip_user_arg=""
+    first_arg=1
+    for arg in "$@"; do
+        if [ -n "$skip_user_arg" ]; then
+            skip_user_arg=""
+            continue
+        fi
+        case "$arg" in
+            --install-user=*) continue ;;
+            --install-user) skip_user_arg=1; continue ;;
+        esac
+        if [ "$first_arg" = 1 ]; then
+            set -- "$arg"
+            first_arg=
+        else
+            set -- "$@" "$arg"
+        fi
+    done
+    if [ "$first_arg" = 1 ]; then
+        set --
+    fi
     case "${cmd:-${1:-install}}" in
         uninstall|remove|delete|purge)
-            "$bin" "$cmd"
+            run_as_install_user "$bin" "$cmd"
             return
             ;;
     esac
     if [ "$#" -eq 0 ]; then
-        "$bin" install
+        run_as_install_user "$bin" install
         return
     fi
-    "$bin" "$@"
+    run_as_install_user "$bin" "$@"
 }
 
 run_payload_checked() {
@@ -173,6 +240,10 @@ cmd="${1:-install}"
 case "$cmd" in
     uninstall|remove|delete|purge)
         log "[INFO] downloading temporary uninstaller"
+        prepare_uninstall_user
+        ;;
+    *)
+        prepare_install_user
         ;;
 esac
 

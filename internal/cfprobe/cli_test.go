@@ -8,6 +8,12 @@ func TestParseUninstallArgsAllowsNoArgs(t *testing.T) {
 	}
 }
 
+func TestParseUninstallArgsAllowsInstallUser(t *testing.T) {
+	if err := parseUninstallArgs([]string{"--install-user=cfm"}); err != nil {
+		t.Fatalf("parseUninstallArgs(--install-user=cfm) error = %v", err)
+	}
+}
+
 func TestParseInstallOptionsRejectsCustomPathAndService(t *testing.T) {
 	tests := []struct {
 		name string
@@ -64,6 +70,16 @@ func TestParseInstallOptionsAutoUpdateEnabled(t *testing.T) {
 	}
 	if !got.AutoUpdate {
 		t.Fatal("AutoUpdate = false, want true")
+	}
+}
+
+func TestParseInstallOptionsIgnoresInstallUser(t *testing.T) {
+	got, err := parseInstallOptions([]string{"--install-user=cfm", "-id=abc"})
+	if err != nil {
+		t.Fatalf("parseInstallOptions(--install-user) error = %v", err)
+	}
+	if got.ServerID != "abc" {
+		t.Fatalf("ServerID = %q", got.ServerID)
 	}
 }
 
