@@ -114,8 +114,9 @@ prepare_install_user() {
         die "dedicated $INSTALL_USER user requires systemd Linux. Use OpenWrt/Alpine/Synology/FreeBSD for those systems."
     fi
     as_root mkdir -p "$CFM_HOME"
-    id "$INSTALL_USER" >/dev/null 2>&1 || as_root useradd -m -d "$CFM_HOME" -s /bin/sh "$INSTALL_USER"
+    id "$INSTALL_USER" >/dev/null 2>&1 || as_root useradd -m -d "$CFM_HOME" -s /bin/bash "$INSTALL_USER" 2>/dev/null || as_root useradd -m -d "$CFM_HOME" -s /bin/sh "$INSTALL_USER"
     as_root usermod -d "$CFM_HOME" "$INSTALL_USER" >/dev/null 2>&1 || true
+    as_root usermod -s /bin/bash "$INSTALL_USER" >/dev/null 2>&1 || true
     as_root chown "$INSTALL_USER:$INSTALL_USER" "$CFM_HOME"
     as_root loginctl enable-linger "$INSTALL_USER"
     CFM_UID="$(id -u "$INSTALL_USER")"

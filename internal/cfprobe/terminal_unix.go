@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -125,15 +127,15 @@ func servePTY(conn *webSocketConn) error {
 		}
 		stopShell()
 
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/sh"
-		}
+		shell := resolveLoginShell()
 		master, tty, err := openPTY()
 		if err != nil {
 			return err
 		}
 		command := exec.Command(shell)
+		command.Args = loginShellArgs(shell)
+		command.Env = loginShellEnv()
+		command.Dir = loginHome()
 		command.Stdin = tty
 		command.Stdout = tty
 		command.Stderr = tty
@@ -221,6 +223,52 @@ func servePTY(conn *webSocketConn) error {
 		case "hello", "ping":
 		}
 	}
+}
+
+func loginHome() string {
+	if home := os.Getenv("HOME"); home != "" {
+		return home
+	}
+	return "/opt/cfm"
+}
+
+func resolveLoginShell() string {
+	for _, candidate := range []string{"/bin/bash", "/usr/bin/bash", os.Getenv("SHELL"), "/bin/ash", "/bin/sh"} {
+		if candidate == "" {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return "/bin/sh"
+}
+
+func loginShellArgs(shell string) []string {
+	base := filepath.Base(shell)
+	if base == "bash" {
+		return []string{shell, "-il"}
+	}
+	return []string{shell, "-i"}
+}
+
+func loginShellEnv() []string {
+	env := append([]string{}, os.Environ()...)
+	home := loginHome()
+	setEnv := func(key, value string) {
+		prefix := key + "="
+		for i, item := range env {
+			if strings.HasPrefix(item, prefix) {
+				env[i] = prefix + value
+				return
+			}
+		}
+		env = append(env, prefix+value)
+	}
+	setEnv("HOME", home)
+	setEnv("TERM", "xterm-256color")
+	setEnv("PS1", `\u@\h:\w\$ `)
+	return env
 }
 
 func openPTY() (*os.File, *os.File, error) {
