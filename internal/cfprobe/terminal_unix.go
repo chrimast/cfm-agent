@@ -4,6 +4,7 @@ package cfprobe
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -227,16 +228,17 @@ func openPTY() (*os.File, *os.File, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := unix.Unlockpt(int(ptmx.Fd())); err != nil {
+	// TIOCSPTLCK takes a pointer to int; IoctlSetInt would pass 0 as an address and return EFAULT ("bad address").
+	if err := unix.IoctlSetPointerInt(int(ptmx.Fd()), unix.TIOCSPTLCK, 0); err != nil {
 		_ = ptmx.Close()
 		return nil, nil, err
 	}
-	name, err := unix.Ptsname(int(ptmx.Fd()))
+	n, err := unix.IoctlGetInt(int(ptmx.Fd()), unix.TIOCGPTN)
 	if err != nil {
 		_ = ptmx.Close()
 		return nil, nil, err
 	}
-	tty, err := os.OpenFile(name, os.O_RDWR|syscall.O_NOCTTY, 0)
+	tty, err := os.OpenFile(fmt.Sprintf("/dev/pts/%d", n), os.O_RDWR|syscall.O_NOCTTY, 0)
 	if err != nil {
 		_ = ptmx.Close()
 		return nil, nil, err
