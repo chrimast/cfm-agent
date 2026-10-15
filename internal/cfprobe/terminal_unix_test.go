@@ -16,7 +16,7 @@ func TestLoginShellArgs(t *testing.T) {
 }
 
 func TestLoginShellEnvSetsPrompt(t *testing.T) {
-	t.Setenv("HOME", "/opt/cfm")
+	t.Setenv("HOME", "/root")
 	env := loginShellEnv()
 	foundPS1 := false
 	foundTerm := false

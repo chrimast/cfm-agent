@@ -22,13 +22,13 @@ curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh 
 wget -O- https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
 
-### 专用 cfm 用户（Linux systemd）
-
-后台复制的 Linux 安装命令是一行 `curl | sh`，脚本会创建 `cfm` 用户、家目录 `/opt/cfm`，并以该用户执行探针安装（`/opt/cfm/.cf-probe/`）。需要 root 或 sudo。
+Linux 系统级安装（root，后台复制命令默认这一档）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sh -s -- install --install-user=cfm -id=SERVER_ID -secret=SECRET -url=WORKER_URL
+curl -fsSL https://raw.githubusercontent.com/chrimast/cfm-agent/main/install.sh | sudo sh -s -- install -id=SERVER_ID -secret=SECRET -url=WORKER_URL
 ```
+
+仍可用 `--install-user=cfm` 装到独立用户，但面板已不再生成该命令。
 
 ## Windows 安装
 

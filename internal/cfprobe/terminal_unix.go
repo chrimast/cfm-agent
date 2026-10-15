@@ -193,6 +193,21 @@ func servePTY(conn *webSocketConn) error {
 			stopShell()
 			return err
 		}
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &envelope) != nil {
+			continue
+		}
+		if strings.HasPrefix(envelope.Type, "fs_") {
+			var fsMsg fsPacket
+			if json.Unmarshal(raw, &fsMsg) != nil {
+				continue
+			}
+			payload, _ := json.Marshal(handleFSPacket(fsMsg))
+			_ = conn.WriteText(payload, 5*time.Second)
+			continue
+		}
 		var msg termMessage
 		if json.Unmarshal(raw, &msg) != nil {
 			continue
@@ -229,7 +244,7 @@ func loginHome() string {
 	if home := os.Getenv("HOME"); home != "" {
 		return home
 	}
-	return "/opt/cfm"
+	return "/root"
 }
 
 func resolveLoginShell() string {
