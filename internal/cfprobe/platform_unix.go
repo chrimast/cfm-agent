@@ -435,10 +435,10 @@ func systemdUserLingerEnabled(name string) bool {
 }
 
 func checkInstallConflicts(paths Paths) error {
-	if err := checkOtherUserProbeRunning(); err != nil {
-		return err
-	}
 	if paths.UserMode {
+		if err := checkOtherUserProbeRunning(); err != nil {
+			return err
+		}
 		if conflicts := systemInstallConflicts(); len(conflicts) > 0 {
 			if runtime.GOOS == "darwin" {
 				return fmt.Errorf("检测到 macOS root/system 版 cf-probe 安装: %s；请先执行 sudo /usr/local/bin/cf-probe uninstall 清理旧版，然后不要使用 sudo，以普通用户重新安装",
@@ -447,10 +447,14 @@ func checkInstallConflicts(paths Paths) error {
 			return fmt.Errorf("检测到系统级/root 版 cf-probe 安装: %s；当前版本暂未实现迁移，请先使用 root 清理旧版本后再以当前用户安装",
 				strings.Join(conflicts, ", "))
 		}
-	} else if conflicts := userInstallConflicts(); len(conflicts) > 0 {
-		return fmt.Errorf("检测到已有非 root 用户版 cf-probe 安装: %s；为避免重复上报，请先切换到对应用户卸载后再继续 root 安装",
-			strings.Join(conflicts, ", "))
+		return nil
 	}
+	cleaned := cleanupUserModeInstalls()
+	for _, item := range cleaned {
+		fmt.Printf("[INFO] Removed leftover user-mode probe: %s\n", item)
+	}
+	stopOtherUserProbeInstances()
+	_ = os.Remove(filepath.Join(os.TempDir(), serviceNameDefault+".lock"))
 	return nil
 }
 
@@ -490,15 +494,83 @@ func userInstallConflicts() []string {
 		return nil
 	}
 	var conflicts []string
-	for _, home := range linuxUserHomeDirs() {
-		service := filepath.Join(home, ".config", "systemd", "user", serviceNameDefault+".service")
-		binary := filepath.Join(home, ".cf-probe", "bin", serviceNameDefault)
-		config := filepath.Join(home, ".cf-probe", "config.conf")
-		if hits := existingPaths(service, binary, config); len(hits) > 0 {
+	for _, home := range userModeHomeDirs() {
+		if hits := existingPaths(userModeInstallPaths(home)...); len(hits) > 0 {
 			conflicts = append(conflicts, home+":"+strings.Join(hits, "|"))
 		}
 	}
 	return uniqueStrings(conflicts)
+}
+
+func userModeHomeDirs() []string {
+	homes := linuxUserHomeDirs()
+	if fileExists("/opt/cfm/.cf-probe/config.conf") || fileExists("/opt/cfm/.cf-probe/bin/"+serviceNameDefault) {
+		homes = append(homes, "/opt/cfm")
+	}
+	return uniqueStrings(homes)
+}
+
+func userModeInstallPaths(home string) []string {
+	return []string{
+		filepath.Join(home, ".config", "systemd", "user", serviceNameDefault+".service"),
+		filepath.Join(home, ".cf-probe", "bin", serviceNameDefault),
+		filepath.Join(home, ".cf-probe", "config.conf"),
+		filepath.Join(home, ".cf-probe"),
+	}
+}
+
+func cleanupUserModeInstalls() []string {
+	if runtime.GOOS != "linux" || !isRootUser() {
+		return nil
+	}
+	var cleaned []string
+	for _, home := range userModeHomeDirs() {
+		if hits := existingPaths(userModeInstallPaths(home)...); len(hits) == 0 {
+			continue
+		}
+		stopUserModeService(home)
+		for _, path := range userModeInstallPaths(home) {
+			if !fileExists(path) {
+				continue
+			}
+			_ = os.RemoveAll(path)
+			if !fileExists(path) {
+				cleaned = append(cleaned, path)
+			}
+		}
+	}
+	return uniqueStrings(cleaned)
+}
+
+func stopUserModeService(home string) {
+	uid := sudoUserUID(home)
+	name := strings.TrimSpace(usernameForUID(uid))
+	if name == "" {
+		name = filepath.Base(home)
+	}
+	runtimeDir := "/run/user/" + strconv.Itoa(uid)
+	if commandExists("systemctl") && name != "" && uid > 0 {
+		_ = runCommandQuiet("systemctl", "-M", name+"@", "--user", "stop", serviceNameDefault+".service")
+		_ = runCommandQuiet("systemctl", "-M", name+"@", "--user", "disable", serviceNameDefault+".service")
+		_ = runCommandQuiet("runuser", "-u", name, "--", "env", "XDG_RUNTIME_DIR="+runtimeDir, "systemctl", "--user", "stop", serviceNameDefault+".service")
+		_ = runCommandQuiet("runuser", "-u", name, "--", "env", "XDG_RUNTIME_DIR="+runtimeDir, "systemctl", "--user", "disable", serviceNameDefault+".service")
+	}
+}
+
+func stopOtherUserProbeInstances() {
+	for _, inst := range runningProbeInstances() {
+		if inst.UID == currentUID() {
+			continue
+		}
+		signalProbeInstance(inst.PID, syscall.SIGTERM)
+	}
+	time.Sleep(200 * time.Millisecond)
+	for _, inst := range runningProbeInstances() {
+		if inst.UID == currentUID() {
+			continue
+		}
+		signalProbeInstance(inst.PID, syscall.SIGKILL)
+	}
 }
 
 func linuxUserHomeDirs() []string {
